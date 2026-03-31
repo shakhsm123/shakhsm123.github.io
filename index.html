@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Self-Play: From Foundations to Self-Improving Models</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=JetBrains+Mono:wght@400;500&family=Crimson+Pro:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #faf9f7;
+    --fg: #1a1a18;
+    --muted: #6b6b65;
+    --faint: #c8c8c0;
+    --accent: #2a2a26;
+    --link: #1a1a18;
+    --link-hover: #555550;
+    --border: #e2e2da;
+    --code-bg: #f0efe9;
+    --serif: 'EB Garamond', Georgia, serif;
+    --mono: 'JetBrains Mono', 'Courier New', monospace;
+    --max: 680px;
+    --side: 260px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111110;
+      --fg: #e8e8e2;
+      --muted: #888882;
+      --faint: #333330;
+      --accent: #d4d4cc;
+      --link: #e8e8e2;
+      --link-hover: #aaaaaa;
+      --border: #282826;
+      --code-bg: #1c1c1a;
+    }
+  }
+
+  html { font-size: 18px; }
+
+  body {
+    font-family: var(--serif);
+    background: var(--bg);
+    color: var(--fg);
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── layout ── */
+  .site-wrap {
+    max-width: calc(var(--max) + var(--side) + 80px);
+    margin: 0 auto;
+    padding: 0 32px;
+    display: grid;
+    grid-template-columns: var(--side) 1fr;
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+      "header header"
+      "sidebar main"
+      "footer footer";
+    gap: 0 80px;
+  }
+
+  @media (max-width: 900px) {
+    .site-wrap {
+      grid-template-columns: 1fr;
+      grid-template-areas:
+        "header"
+        "main"
+        "sidebar"
+        "footer";
+      gap: 0;
+    }
+  }
+
+  /* ── header ── */
+  header {
+    grid-area: header;
+    padding: 48px 0 40px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 48px;
+    display: flex;
+    align-items: baseline;
+    gap: 40px;
+  }
+
+  .site-title {
+    font-family: var(--serif);
+    font-size: 1rem;
+    font-weight: 400;
+    letter-spacing: 0.01em;
+    color: var(--fg);
+    text-decoration: none;
+  }
+
+  nav { display: flex; gap: 24px; }
+  nav a {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+    text-decoration: none;
+    letter-spacing: 0.03em;
+    transition: color 0.15s;
+  }
+  nav a:hover { color: var(--fg); }
+
+  /* ── sidebar ── */
+  aside {
+    grid-area: sidebar;
+    padding-top: 4px;
+  }
+
+  .author-block {
+    margin-bottom: 36px;
+  }
+
+  .author-name {
+    font-family: var(--serif);
+    font-size: 1rem;
+    font-weight: 500;
+    margin-bottom: 10px;
+    color: var(--fg);
+  }
+
+  .author-bio {
+    font-size: 0.88rem;
+    color: var(--muted);
+    line-height: 1.65;
+  }
+
+  .author-bio a {
+    color: var(--muted);
+    text-decoration: underline;
+    text-decoration-color: var(--faint);
+    transition: color 0.15s;
+  }
+  .author-bio a:hover { color: var(--fg); }
+
+  .sidebar-section {
+    margin-top: 32px;
+  }
+
+  .sidebar-label {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin-bottom: 12px;
+  }
+
+  .toc { list-style: none; }
+  .toc li {
+    margin-bottom: 6px;
+  }
+  .toc a {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+    text-decoration: none;
+    line-height: 1.5;
+    display: block;
+    transition: color 0.15s;
+  }
+  .toc a:hover { color: var(--fg); }
+  .toc a.active { color: var(--fg); }
+  .toc .toc-sub { padding-left: 14px; }
+  .toc .toc-sub a { font-size: 0.68rem; color: var(--faint); }
+  .toc .toc-sub a:hover { color: var(--muted); }
+
+  .meta-list { list-style: none; }
+  .meta-list li {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+
+  /* ── main content ── */
+  main {
+    grid-area: main;
+    max-width: var(--max);
+  }
+
+  /* post header */
+  .post-date {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-bottom: 14px;
+    letter-spacing: 0.02em;
+  }
+
+  .post-title {
+    font-family: var(--serif);
+    font-size: 2.1rem;
+    font-weight: 500;
+    line-height: 1.25;
+    margin-bottom: 10px;
+    color: var(--fg);
+    letter-spacing: -0.01em;
+  }
+
+  .post-subtitle {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 1.05rem;
+    color: var(--muted);
+    margin-bottom: 32px;
+    line-height: 1.6;
+  }
+
+  .token-count {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--faint);
+    margin-bottom: 40px;
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* content typography */
+  .content h2 {
+    font-family: var(--serif);
+    font-size: 1.4rem;
+    font-weight: 500;
+    margin: 52px 0 16px;
+    color: var(--fg);
+    letter-spacing: -0.005em;
+  }
+
+  .content h3 {
+    font-family: var(--serif);
+    font-size: 1.12rem;
+    font-weight: 500;
+    margin: 36px 0 12px;
+    color: var(--fg);
+  }
+
+  .content h4 {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 28px 0 10px;
+  }
+
+  .content p {
+    margin-bottom: 22px;
+    color: var(--fg);
+  }
+
+  .content a {
+    color: var(--link);
+    text-decoration: underline;
+    text-decoration-color: var(--faint);
+    text-underline-offset: 3px;
+    transition: text-decoration-color 0.15s;
+  }
+  .content a:hover { text-decoration-color: var(--fg); }
+
+  .content ul, .content ol {
+    margin: 0 0 22px 1.4em;
+  }
+  .content li { margin-bottom: 6px; }
+
+  .content strong { font-weight: 600; }
+  .content em { font-style: italic; }
+
+  /* inline code */
+  .content code {
+    font-family: var(--mono);
+    font-size: 0.8em;
+    background: var(--code-bg);
+    padding: 0.15em 0.4em;
+    border-radius: 3px;
+    color: var(--fg);
+  }
+
+  /* code block */
+  .content pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px 24px;
+    overflow-x: auto;
+    margin: 28px 0;
+    line-height: 1.6;
+  }
+  .content pre code {
+    background: none;
+    padding: 0;
+    font-size: 0.78rem;
+  }
+
+  /* math blocks */
+  .math-block {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    background: var(--code-bg);
+    border-left: 2px solid var(--faint);
+    padding: 16px 20px;
+    margin: 24px 0;
+    overflow-x: auto;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+
+  /* callout / aside box */
+  .callout {
+    border-left: 2px solid var(--faint);
+    padding: 16px 20px;
+    margin: 28px 0;
+    color: var(--muted);
+    font-size: 0.92rem;
+  }
+  .callout strong {
+    color: var(--fg);
+    font-weight: 500;
+  }
+
+  /* figure / image placeholder */
+  .fig {
+    margin: 36px 0;
+  }
+  .fig-body {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+    color: var(--faint);
+    font-family: var(--mono);
+    font-size: 0.72rem;
+  }
+  .fig-caption {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-top: 10px;
+    font-style: italic;
+    line-height: 1.5;
+  }
+
+  /* section divider */
+  .section-rule {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 52px 0;
+  }
+
+  /* reading progress */
+  #progress-bar {
+    position: fixed;
+    top: 0; left: 0;
+    width: 0%;
+    height: 2px;
+    background: var(--fg);
+    z-index: 100;
+    transition: width 0.1s linear;
+  }
+
+  /* footnote / reference list */
+  .references {
+    margin-top: 52px;
+    padding-top: 28px;
+    border-top: 1px solid var(--border);
+  }
+  .references h4 {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin-bottom: 16px;
+  }
+  .ref-list {
+    list-style: none;
+    counter-reset: refs;
+  }
+  .ref-list li {
+    counter-increment: refs;
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-bottom: 8px;
+    padding-left: 28px;
+    position: relative;
+    line-height: 1.55;
+  }
+  .ref-list li::before {
+    content: "[" counter(refs) "]";
+    position: absolute;
+    left: 0;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--faint);
+  }
+  .ref-list a {
+    color: var(--muted);
+    text-decoration: underline;
+    text-decoration-color: var(--faint);
+  }
+
+  /* ── footer ── */
+  footer {
+    grid-area: footer;
+    padding: 40px 0 48px;
+    border-top: 1px solid var(--border);
+    margin-top: 64px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+  }
+
+  .footer-name {
+    font-family: var(--serif);
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+
+  .footer-links { display: flex; gap: 20px; }
+  .footer-links a {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--faint);
+    text-decoration: none;
+    letter-spacing: 0.03em;
+    transition: color 0.15s;
+  }
+  .footer-links a:hover { color: var(--muted); }
+
+  @media (max-width: 600px) {
+    html { font-size: 16px; }
+    .site-wrap { padding: 0 20px; }
+    header { flex-direction: column; gap: 16px; padding: 32px 0 28px; }
+    .post-title { font-size: 1.7rem; }
+    footer { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<div id="progress-bar"></div>
+
+<div class="site-wrap">
+
+  <!-- ── HEADER ── -->
+  <header>
+    <a href="#" class="site-title">research notes</a>
+    <nav>
+      <a href="#">posts</a>
+      <a href="#">archive</a>
+      <a href="#">about</a>
+    </nav>
+  </header>
+
+  <!-- ── SIDEBAR ── -->
+  <aside>
+    <div class="author-block">
+      <p class="author-name">Your Name</p>
+      <p class="author-bio">
+        PhD student / researcher working on reinforcement learning and language models.
+        Currently exploring self-play, curriculum learning, and multi-agent systems.
+      </p>
+    </div>
+
+    <div class="sidebar-section">
+      <p class="sidebar-label">In this post</p>
+      <ul class="toc">
+        <li><a href="#intro" class="toc-link">Introduction</a></li>
+        <li><a href="#foundations" class="toc-link">Foundations</a>
+          <ul class="toc toc-sub">
+            <li><a href="#game-theory" class="toc-link">Game-theoretic view</a></li>
+            <li><a href="#verification" class="toc-link">The verification problem</a></li>
+          </ul>
+        </li>
+        <li><a href="#architectures" class="toc-link">Canonical architectures</a>
+          <ul class="toc toc-sub">
+            <li><a href="#alphazero" class="toc-link">AlphaZero</a></li>
+            <li><a href="#gans" class="toc-link">GANs as self-play</a></li>
+            <li><a href="#psv" class="toc-link">PSV loop for LLMs</a></li>
+          </ul>
+        </li>
+        <li><a href="#implementation" class="toc-link">Implementation</a>
+          <ul class="toc toc-sub">
+            <li><a href="#game-impl" class="toc-link">Mini-game setting</a></li>
+            <li><a href="#llm-impl" class="toc-link">LLM setting</a></li>
+          </ul>
+        </li>
+        <li><a href="#trends" class="toc-link">Current trends</a></li>
+        <li><a href="#references" class="toc-link">References</a></li>
+      </ul>
+    </div>
+
+    <div class="sidebar-section">
+      <p class="sidebar-label">Meta</p>
+      <ul class="meta-list">
+        <li>~18.4k tokens</li>
+        <li>April 2026</li>
+        <li>rl · self-play · llm</li>
+      </ul>
+    </div>
+  </aside>
+
+  <!-- ── MAIN ── -->
+  <main>
+    <p class="post-date">April 2026</p>
+    <h1 class="post-title">Self-Play: From Game Theory Foundations to Self-Improving Language Models</h1>
+    <p class="post-subtitle">
+      A learning agent whose only teacher is a past or future version of itself.
+      We trace the idea from Nash equilibria to modern PSV loops in LLMs.
+    </p>
+    <p class="token-count">~18.4k tokens · estimated 45 min read</p>
+
+    <div class="content">
+
+      <!-- ── INTRO ── -->
+      <h2 id="intro">Introduction</h2>
+      <p>
+        Most learning requires supervision: labeled examples, reward signals designed by humans, or
+        demonstrations from experts. Self-play discards that requirement. The agent trains against
+        itself — or copies of itself — generating its own curriculum, its own opposition, and its
+        own feedback signal. The teacher and the student are the same entity at different points in
+        training time.
+      </p>
+      <p>
+        The idea sounds circular, even paradoxical. How can a system improve by competing only
+        against itself? The answer lies in a subtle asymmetry: the opponent is always the
+        <em>current best version</em> of the agent. As the agent improves, so does the difficulty
+        of the curriculum. This bootstrapping creates a never-ending ladder of increasing challenge,
+        with no human in the loop.
+      </p>
+      <p>
+        Self-play became famous through DeepMind's AlphaGo and AlphaZero. But the mathematical
+        foundations are much older, rooted in game theory and fixed-point theorems. And its most
+        exciting frontier today is not board games — it is language models learning to reason, where
+        the verification problem is far harder and the failure modes are more subtle.
+      </p>
+      <p>
+        This post is structured in four parts: foundations (theory and proofs), canonical
+        architectures, a step-by-step implementation in two settings, and a survey of where the
+        field is today. Code is in Python throughout; mathematical notation follows standard RL
+        and game theory conventions.
+      </p>
+
+      <hr class="section-rule">
+
+      <!-- ── FOUNDATIONS ── -->
+      <h2 id="foundations">Part I — Foundations</h2>
+
+      <h3 id="game-theory">1.1 The game-theoretic view</h3>
+      <p>
+        Formally, consider a two-player zero-sum game defined by a tuple
+        <code>(S, A₁, A₂, R)</code> where <code>S</code> is the state space,
+        <code>A₁</code> and <code>A₂</code> are action spaces for players 1 and 2,
+        and <code>R : S × A₁ × A₂ → ℝ</code> is the reward for player 1 (player 2 receives
+        <code>-R</code>). A policy <code>π : S → Δ(A)</code> maps states to distributions
+        over actions.
+      </p>
+
+      <div class="math-block">
+        V*(s) = max_{π₁} min_{π₂} 𝔼[∑ᵢ γⁱ R(sᵢ, a¹ᵢ, a²ᵢ) | s₀=s, π₁, π₂]
+      </div>
+
+      <p>
+        The minimax theorem (von Neumann, 1928) guarantees that in finite two-player zero-sum
+        games, the max and min operators commute — there exists a saddle point. Self-play is a
+        computational procedure for finding this saddle point without explicit enumeration of
+        the game tree.
+      </p>
+
+      <p>
+        In <strong>fictitious play</strong> (Brown, 1951), each player at time <code>t</code>
+        best-responds to the empirical average of the opponent's historical strategies. Self-play
+        in neural networks is a stochastic, parameterized version of this idea: instead of best
+        responding to a historical mixture, we update the parameters of a single network against
+        a copy of itself, periodically refreshing the opponent pool.
+      </p>
+
+      <div class="callout">
+        <strong>Key insight.</strong> In finite two-player zero-sum games, iterative self-play
+        converges to a Nash equilibrium under mild assumptions on the update rule (e.g., no-regret
+        learning). The rate of convergence depends on the structure of the game — tree games with
+        perfect information converge faster than simultaneous games with hidden information.
+      </div>
+
+      <p>
+        The convergence argument works as follows. Define the exploitability of a policy
+        <code>π</code> as the expected gain a best-responding opponent can achieve:
+      </p>
+
+      <div class="math-block">
+        exploit(π) = max_{π'} V(π', π) − V(π, π)
+      </div>
+
+      <p>
+        A Nash equilibrium has <code>exploit(π*) = 0</code>. Under no-regret self-play,
+        exploitability decreases at rate <code>O(1/√T)</code> where <code>T</code> is the
+        number of iterations. This is the theoretical guarantee underlying AlphaZero's convergence.
+      </p>
+
+      <h3 id="verification">1.2 The verification problem</h3>
+      <p>
+        Games have unambiguous outcomes. In chess, there is a winner. In Go, there is a score.
+        The reward signal is cheap, binary, and perfectly reliable. This is the silent assumption
+        baked into all of the above theory.
+      </p>
+      <p>
+        The verification problem is what happens when you remove this assumption. Suppose the
+        agent is a language model and the task is mathematical reasoning. Verifying a final
+        numerical answer is cheap — a symbolic checker suffices. But verifying a proof sketch,
+        a plan, or a natural language argument is expensive, noisy, or impossible without a
+        separate learned model.
+      </p>
+      <p>
+        Formally, let <code>V : X × Y → {0, 1}</code> be a verifier mapping (problem, solution)
+        pairs to correctness judgments. Self-play is tractable when:
+      </p>
+      <ol>
+        <li><strong>V is exact:</strong> games, math answers, code execution.</li>
+        <li><strong>V is a learned model</strong> that itself improves during training.</li>
+        <li><strong>V is implicit</strong> in the structure of the environment (e.g., a game simulator).</li>
+      </ol>
+
+      <p>
+        The danger in case (2) is <em>reward hacking</em>: the agent finds solutions that fool
+        the learned verifier without actually solving the problem. This is analogous to
+        adversarial examples — the agent has found a blind spot in the verifier's distribution.
+        A recent line of work (January 2026) formalizes when self-play is safe to use: the notion
+        of <em>learnable information gain</em> requires that the self-generated training data
+        contains structure not already captured in the model's current parameters.
+      </p>
+
+      <hr class="section-rule">
+
+      <!-- ── ARCHITECTURES ── -->
+      <h2 id="architectures">Part II — Canonical Architectures</h2>
+
+      <h3 id="alphazero">2.1 AlphaZero as the reference design</h3>
+      <p>
+        AlphaZero instantiates all three components cleanly. The policy-value network
+        <code>f_θ(s) = (p, v)</code> outputs a prior over moves and a scalar value estimate.
+        Monte Carlo Tree Search uses these to produce improved policy targets. The self-play
+        loop generates games, which train the network, which improves MCTS, which generates
+        better games.
+      </p>
+
+      <div class="fig">
+        <div class="fig-body">[ AlphaZero self-play loop diagram — insert visualization ]</div>
+        <p class="fig-caption">
+          Figure 1. The AlphaZero loop. Self-play generates (s, π_mcts, z) triples where
+          z ∈ {-1, 0, 1} is the game outcome. The network is trained to minimize
+          cross-entropy on π_mcts and MSE on z.
+        </p>
+      </div>
+
+      <p>
+        The key design choices: (a) the opponent is a recent snapshot of the network, not
+        the current weights — this prevents destructive interference during training;
+        (b) temperature annealing controls exploration vs exploitation in MCTS;
+        (c) the value head provides a dense reward signal even in long games where the
+        outcome is far in the future.
+      </p>
+
+      <h3 id="gans">2.2 GANs as self-play</h3>
+      <p>
+        Generative adversarial networks (Goodfellow et al., 2014) are self-play between a
+        generator <code>G</code> and a discriminator <code>D</code>. Recast in the
+        two-player game frame: <code>G</code> is the proposer trying to fool
+        <code>D</code>; <code>D</code> is the verifier trying to distinguish real from
+        generated. The minimax objective is:
+      </p>
+      <div class="math-block">
+        min_G max_D 𝔼_{x~p_data}[log D(x)] + 𝔼_{z~p_z}[log(1 − D(G(z)))]
+      </div>
+      <p>
+        The theoretical result (Goodfellow et al.) shows that the Nash equilibrium of this
+        game is achieved when <code>G</code> recovers the data distribution exactly and
+        <code>D</code> outputs 1/2 everywhere. In practice, training is notoriously
+        unstable — mode collapse is the GAN analogue of self-play collapse in the LLM setting.
+      </p>
+
+      <h3 id="psv">2.3 The Proposer–Solver–Verifier loop</h3>
+      <p>
+        Modern LLM self-play uses a triadic structure. A <strong>Proposer</strong> generates
+        tasks; a <strong>Solver</strong> attempts them; a <strong>Verifier</strong> checks
+        correctness. The Proposer and Solver are often the same model in different inference
+        calls. The loop:
+      </p>
+
+      <pre><code>for iteration t = 1 ... T:
+    tasks = Proposer.generate(difficulty_level=t)
+    solutions = Solver.attempt(tasks)
+    rewards = Verifier.check(tasks, solutions)
+    update Solver with (tasks, solutions, rewards)
+    update Proposer curriculum based on Solver's pass rate</code></pre>
+
+      <p>
+        The curriculum is the hard part. If the Proposer generates tasks the Solver always
+        fails, the gradient signal is zero. If the Proposer generates tasks the Solver
+        always passes, the signal is also zero. The sweet spot — tasks the Solver passes
+        roughly 50–80% of the time — produces the strongest learning signal.
+      </p>
+
+      <div class="callout">
+        <strong>Collapse.</strong> Systems like R-Zero report rapid initial gains followed
+        by instability after a few iterations. The Proposer drifts toward trivially easy
+        or unsolvable tasks because both extremes are locally optimal for minimizing the
+        training loss of the Proposer itself. Stabilization requires either a fixed external
+        task distribution or a learned difficulty signal that is robust to hacking.
+      </div>
+
+      <hr class="section-rule">
+
+      <!-- ── IMPLEMENTATION ── -->
+      <h2 id="implementation">Part III — Implementation</h2>
+
+      <h3 id="game-impl">3.1 Setting 1: Mini-game self-play (Connect-4)</h3>
+      <p>
+        We build the full self-play loop for Connect-4. The environment is a 6×7 grid;
+        a player wins by placing four tokens in a row. Verification is exact: a win/draw
+        checker runs in O(1). The policy network is a small CNN.
+      </p>
+
+      <h4>Environment</h4>
+      <pre><code>import numpy as np
+
+class Connect4:
+    def __init__(self):
+        self.board = np.zeros((6, 7), dtype=np.int8)
+        self.current_player = 1
+
+    def legal_moves(self):
+        return [c for c in range(7) if self.board[0, c] == 0]
+
+    def drop(self, col):
+        row = np.max(np.where(self.board[:, col] == 0))
+        self.board[row, col] = self.current_player
+        self.current_player *= -1
+        return self._check_win(row, col)
+
+    def _check_win(self, row, col):
+        # checks all four directions for a run of 4
+        ...</code></pre>
+
+      <h4>Self-play loop</h4>
+      <pre><code>class SelfPlayTrainer:
+    def __init__(self, net, lr=1e-3, buffer_size=10_000):
+        self.net = net
+        self.opponent = copy.deepcopy(net)   # frozen snapshot
+        self.buffer = ReplayBuffer(buffer_size)
+        self.opt = torch.optim.Adam(net.parameters(), lr=lr)
+        self.elo = [1000]
+
+    def run_episode(self):
+        game = Connect4()
+        history = []
+        while True:
+            s = game.board.copy()
+            # current player uses live net; opponent uses frozen snapshot
+            if game.current_player == 1:
+                p, v = self.net(encode(s))
+            else:
+                p, v = self.opponent(encode(s))
+            a = sample(p, game.legal_moves())
+            result = game.drop(a)
+            history.append((s, p.detach(), game.current_player))
+            if result is not None:
+                self._assign_rewards(history, result)
+                break
+
+    def update_opponent(self):
+        # refresh frozen opponent every N iterations
+        # this prevents destructive interference
+        self.opponent = copy.deepcopy(self.net)</code></pre>
+
+      <div class="fig">
+        <div class="fig-body">[ ELO progression chart — insert visualization ]</div>
+        <p class="fig-caption">
+          Figure 2. ELO rating of the agent over self-play iterations. The curve shows
+          rapid early improvement followed by slower refinement as strategies become more complex.
+          Periodic opponent refreshes are visible as small dips.
+        </p>
+      </div>
+
+      <h3 id="llm-impl">3.2 Setting 2: LLM math reasoning (PSV toy loop)</h3>
+      <p>
+        We now port the same skeleton to a language model setting. The Proposer generates
+        arithmetic problems of varying difficulty; the Solver (same model, different prompt)
+        attempts them; the Verifier is a Python <code>eval()</code> call — perfectly reliable,
+        zero cost.
+      </p>
+
+      <pre><code>import anthropic
+
+client = anthropic.Anthropic()
+
+def propose(difficulty: int) -> str:
+    resp = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=100,
+        messages=[{
+            "role": "user",
+            "content": f"Generate a math problem with difficulty {difficulty}/10. "
+                       "Return only the problem statement, no solution."
+        }]
+    )
+    return resp.content[0].text
+
+def solve(problem: str) -> str:
+    resp = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=200,
+        messages=[{
+            "role": "user",
+            "content": f"Solve this problem. Return only the final numeric answer: {problem}"
+        }]
+    )
+    return resp.content[0].text.strip()
+
+def verify(problem: str, answer: str) -> bool:
+    # extract numeric answer and check with symbolic solver
+    try:
+        import sympy
+        return abs(float(sympy.sympify(answer)) - ground_truth(problem)) < 1e-6
+    except:
+        return False
+
+# PSV loop
+for iteration in range(20):
+    difficulty = calibrate_difficulty(recent_pass_rate)
+    problems = [propose(difficulty) for _ in range(batch_size)]
+    answers  = [solve(p) for p in problems]
+    rewards  = [verify(p, a) for p, a in zip(problems, answers)]
+    pass_rate = sum(rewards) / len(rewards)
+    log(iteration, difficulty, pass_rate)</code></pre>
+
+      <p>
+        The key diagnostic is the pass rate as a function of proposed difficulty. A well-calibrated
+        Proposer keeps pass rate in the 0.5–0.8 range. Collapse shows up as the pass rate
+        jumping to 0.95+ (trivial tasks) or dropping to 0.05 (impossible tasks) within a few
+        iterations.
+      </p>
+
+      <div class="fig">
+        <div class="fig-body">[ Pass rate vs difficulty trajectory — insert visualization ]</div>
+        <p class="fig-caption">
+          Figure 3. Pass rate and proposed difficulty over PSV iterations. The healthy regime
+          (shaded) keeps pass rate between 0.5 and 0.8. Collapse is visible as the trajectory
+          exits this band.
+        </p>
+      </div>
+
+      <hr class="section-rule">
+
+      <!-- ── TRENDS ── -->
+      <h2 id="trends">Part IV — Current Research Landscape</h2>
+
+      <p>
+        The most active area of self-play research today is not games — it is reasoning in
+        language models. Several threads are worth following:
+      </p>
+
+      <p>
+        <strong>Math and code as the beachhead.</strong> Verifiable domains let researchers
+        deploy exact verifiers, making self-play tractable without a learned reward model.
+        DeepSeek-R1, R-Zero, and related systems all exploit this: train on problems where
+        correctness is checkable, use self-play to generate harder problems, iterate.
+      </p>
+
+      <p>
+        <strong>Learnable information gain.</strong> A February 2026 paper formalizes when
+        self-play is theoretically sound. The condition is that the generated data must have
+        nonzero learnable information gain relative to the current model — it must contain
+        structure the model cannot already predict. This gives a diagnostic for detecting
+        collapse before it happens.
+      </p>
+
+      <p>
+        <strong>Adversarial imitation learning equivalence.</strong> The same paper shows
+        that adversarial self-play (one model generates, one model discriminates) is
+        mathematically equivalent to adversarial imitation learning. This connects the
+        self-play literature to a separate line of imitation learning research.
+      </p>
+
+      <p>
+        <strong>Autonomous driving.</strong> Self-play in simulation (Gigaflow, 2025) enables
+        autonomous driving agents to learn without any human demonstrations. The agents compete
+        against each other in diverse scenarios, discovering corner cases that human-designed
+        curricula miss.
+      </p>
+
+      <p>
+        The central open question remains: under what conditions does iterative self-play lead
+        to genuine intelligence improvement, rather than increasingly sophisticated reward
+        hacking? The field is beginning to answer this mathematically rather than empirically —
+        which is the sign of a maturing area.
+      </p>
+
+      <!-- ── REFERENCES ── -->
+      <div class="references">
+        <h4 id="references">References</h4>
+        <ol class="ref-list">
+          <li>Silver et al. "Mastering Chess and Shogi by Self-Play with a General Reinforcement Learning Algorithm." <em>arXiv</em>, 2017.</li>
+          <li>Goodfellow et al. "Generative Adversarial Nets." <em>NeurIPS</em>, 2014.</li>
+          <li>Brown, G.W. "Iterative Solution of Games by Fictitious Play." <em>Activity Analysis of Production and Allocation</em>, 1951.</li>
+          <li>von Neumann, J. "Zur Theorie der Gesellschaftsspiele." <em>Mathematische Annalen</em>, 1928.</li>
+          <li>DeepSeek-AI. "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning." <em>arXiv</em>, 2025.</li>
+          <li>"Self-Play in Language Models: Formalizing Learnable Information Gain." <em>arXiv</em>, Feb 2026.</li>
+          <li>Gigaflow: Self-Play for Autonomous Driving without Human Demonstrations. <em>arXiv</em>, 2025.</li>
+        </ol>
+      </div>
+
+    </div><!-- /content -->
+  </main>
+
+  <!-- ── FOOTER ── -->
+  <footer>
+    <span class="footer-name">research notes</span>
+    <div class="footer-links">
+      <a href="#">github</a>
+      <a href="#">twitter</a>
+      <a href="#">email</a>
+      <a href="#">rss</a>
+    </div>
+  </footer>
+
+</div><!-- /site-wrap -->
+
+<script>
+  // Reading progress bar
+  window.addEventListener('scroll', () => {
+    const doc = document.documentElement;
+    const scrolled = doc.scrollTop / (doc.scrollHeight - doc.clientHeight);
+    document.getElementById('progress-bar').style.width = (scrolled * 100) + '%';
+  });
+
+  // TOC active section highlight
+  const sections = document.querySelectorAll('h2[id], h3[id]');
+  const tocLinks = document.querySelectorAll('.toc-link');
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        tocLinks.forEach(l => l.classList.remove('active'));
+        const active = document.querySelector(`.toc-link[href="#${entry.target.id}"]`);
+        if (active) active.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+
+  sections.forEach(s => observer.observe(s));
+</script>
+
+</body>
+</html>
